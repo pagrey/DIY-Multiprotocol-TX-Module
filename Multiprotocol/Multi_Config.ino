@@ -20,7 +20,14 @@
 #endif
 
 #if defined(MULTI_RXID)
-uint8_t rx_number;
+struct {
+	uint8_t protocol;
+	uint8_t number;
+} active;
+typedef struct rx_id_data {
+	uint16_t addr;
+	uint8_t len;
+};
 #endif
 
 void CONFIG_write_GID(uint32_t id)
@@ -37,25 +44,48 @@ void CONFIG_write_CID(uint8_t *data)
 	//eeprom_write_byte((EE_ADDR)EEPROM_CID_INIT_OFFSET, 0xf0);
 }
 #if defined(MULTI_RXID)
-void CONFIG_get_RXID(uint8_t rx_id[], uint8_t n, uint8_t number)
+void MULTI_get_RX_data(struct rx_id_data *rdata)
 {
-       	static uint16_t addr;
-	if(number<16)
-		addr=AFHDS2A_EEPROM_OFFSET+number*n;
-	else
-		addr=AFHDS2A_EEPROM_OFFSET2+(number-16)*n;
-	for(uint8_t i=0; i<n; i++)
-		rx_id[i]=eeprom_read_byte((EE_ADDR)addr+i);
+	switch(active.protocol)
+	{
+		case PROTO_AFHDS2A:
+			rdata->len=4;
+			if(active.number<16)
+				rdata->addr=AFHDS2A_EEPROM_OFFSET+active.number*4;
+			else
+				rdata->addr=AFHDS2A_EEPROM_OFFSET2+(active.number-16)*4;
+			break;
+		case PROTO_BUGS:
+			rdata->len=2;
+			rdata->addr=BUGS_EEPROM_OFFSET+active.number*2;
+			break;
+		case PROTO_BUGSMINI:
+			rdata->len=2;
+			rdata->addr=BUGSMINI_EEPROM_OFFSET+active.number*2;
+			break;
+		case PROTO_MOULDKG:
+			rdata->len=3;
+			rdata->addr=MOULDKG_EEPROM_OFFSET+active.number*3;
+			break;
+		case PROTO_TRAXXAS:
+			rdata->len=3;
+			rdata->addr=TRAXXAS_EEPROM_OFFSET+active.number*3;
+			break;
+		default:
+			rdata->len=4;
+			rdata->addr = EEPROM_ID_OFFSET;
+			break;
+	}
 }
-void CONFIG_write_RXID(uint8_t rx_id[], uint8_t n, uint8_t number)
+void CONFIG_get_RXID(uint8_t *data, uint16_t addr, uint8_t nb)
 {
-        static uint16_t addr;
-	if(number<16)
-		addr=AFHDS2A_EEPROM_OFFSET+number*n;
-	else
-		addr=AFHDS2A_EEPROM_OFFSET2+(number-16)*n;
-	for(uint8_t i=0; i<n; i++)
-		eeprom_write_byte((EE_ADDR)addr+i,rx_id[i]);
+	for(uint8_t i=0; i<nb; i++)
+		data[i]=eeprom_read_byte((EE_ADDR)addr+i);
+}
+void CONFIG_write_RXID(uint8_t *data, uint16_t addr, uint8_t nb)
+{
+	for(uint8_t i=0; i<nb; i++)
+		eeprom_write_byte((EE_ADDR)addr+i,data[i]);
 }
 #endif
 uint16_t CONFIG_callback()
@@ -118,22 +148,25 @@ uint16_t CONFIG_callback()
 #endif
 #if defined(MULTI_RXID)
 			case 6:
-				rx_number = CONFIG_SerialRX_val[1];
-				if (rx_number > 0x40)
-					rx_number = 0x40;
+				active.protocol = CONFIG_SerialRX_val[1];
+				active.number = CONFIG_SerialRX_val[2];
+				if (active.number > 0x40)
+					active.number = 0x40;
 				debug("Update RX Number to ");
-				debug("%02X ",rx_number);
+				debug("%02X ",active.number);
 				debugln("");
 				break;
 			case 7:
-				uint8_t data[4];
-				for(uint8_t i=0; i<4; i++)
+			 	struct rx_id_data active_data;
+				MULTI_get_RX_data(&active_data);
+				uint8_t data[active_data.len];
+				for(uint8_t i=0; i<active_data.len; i++)
 					data[i] = CONFIG_SerialRX_val[i+1];
 				debug("Update RXID to ");
-				for(uint8_t i=0; i<4; i++)
+				for(uint8_t i=0; i<active_data.len; i++)
 					debug("%02X ",data[i]);
 				debugln("");
-				CONFIG_write_RXID(data, 4, rx_number);
+				CONFIG_write_RXID(&data[1], active_data.addr, active_data.len);
 				break;
 #else
 			case 7:
@@ -222,15 +255,18 @@ uint16_t CONFIG_callback()
 #if defined(MULTI_RXID)
 			case 6:
 				//RX Number
-				memcpy(&packet_in[1],"AFHDS2 RX",9);
-				packet_in[10] = 0xD0+1;
-				packet_in[11] = rx_number;
+				memcpy(&packet_in[1],"RX",2);
+				packet_in[3] = 0xD0+2;
+				packet_in[4] = active.protocol;
+				packet_in[5] = active.number;
 				break;
 			case 7:
 				//RX ID
-				memcpy(&packet_in[1],"RX ID",5);
-				packet_in[6] = 0xD0 + 4;
-				CONFIG_get_RXID(&packet_in[7], 4, rx_number);
+			 	struct rx_id_data active_data;
+				MULTI_get_RX_data(&active_data);
+				memcpy(&packet_in[1],"ID",2);
+				packet_in[3] = 0xD0 + active_data.len;
+				CONFIG_get_RXID(&packet_in[4], active_data.addr, active_data.len);
 				break;
 #else
 			case 7:
@@ -250,7 +286,8 @@ uint16_t CONFIG_callback()
 void CONFIG_init()
 {
 #if defined(MULTI_RXID)
-	rx_number = RX_num;
+	active.number = RX_num;
+	active.protocol = PROTO_AFHDS2A;
 #endif
 }
 
