@@ -19,6 +19,10 @@
 #include "iface_cyrf6936.h"
 #endif
 
+#if defined(MULTI_RXID)
+uint8_t rx_number;
+#endif
+
 void CONFIG_write_GID(uint32_t id)
 {
 	for(uint8_t i=0;i<4;i++)
@@ -32,6 +36,28 @@ void CONFIG_write_CID(uint8_t *data)
 		eeprom_write_byte((EE_ADDR)EEPROM_CID_OFFSET+i, data[i]);
 	//eeprom_write_byte((EE_ADDR)EEPROM_CID_INIT_OFFSET, 0xf0);
 }
+#if defined(MULTI_RXID)
+void CONFIG_get_RXID(uint8_t rx_id[], uint8_t n, uint8_t number)
+{
+       	static uint16_t addr;
+	if(number<16)
+		addr=AFHDS2A_EEPROM_OFFSET+number*n;
+	else
+		addr=AFHDS2A_EEPROM_OFFSET2+(number-16)*n;
+	for(uint8_t i=0; i<n; i++)
+		rx_id[i]=eeprom_read_byte((EE_ADDR)addr+i);
+}
+void CONFIG_write_RXID(uint8_t rx_id[], uint8_t n, uint8_t number)
+{
+        static uint16_t addr;
+	if(number<16)
+		addr=AFHDS2A_EEPROM_OFFSET+number*n;
+	else
+		addr=AFHDS2A_EEPROM_OFFSET2+(number-16)*n;
+	for(uint8_t i=0; i<n; i++)
+		eeprom_write_byte((EE_ADDR)addr+i,rx_id[i]);
+}
+#endif
 uint16_t CONFIG_callback()
 {
 	static uint8_t line=0, page=0;
@@ -69,13 +95,13 @@ uint16_t CONFIG_callback()
 				}
 				break;
 #ifdef CYRF6936_INSTALLED
-			case 4:
+			case 3:
 				debug("Update CID to ");
 				for(uint8_t i=0; i<6; i++)
 					debug("%02X ",CONFIG_SerialRX_val[i+1]);
 				debugln("");
 				CONFIG_write_CID(&CONFIG_SerialRX_val[1]);
-			case 5:
+			case 4:
 				if(CONFIG_SerialRX_val[1]==0xAA)
 				{
 					uint8_t data[6];
@@ -90,6 +116,26 @@ uint16_t CONFIG_callback()
 				}
 				break;
 #endif
+#if defined(MULTI_RXID)
+			case 6:
+				rx_number = CONFIG_SerialRX_val[1];
+				if (rx_number > 0x40)
+					rx_number = 0x40;
+				debug("Update RX Number to ");
+				debug("%02X ",rx_number);
+				debugln("");
+				break;
+			case 7:
+				uint8_t data[4];
+				for(uint8_t i=0; i<4; i++)
+					data[i] = CONFIG_SerialRX_val[i+1];
+				debug("Update RXID to ");
+				for(uint8_t i=0; i<4; i++)
+					debug("%02X ",data[i]);
+				debugln("");
+				CONFIG_write_RXID(data, 4, rx_number);
+				break;
+#else
 			case 7:
 				if(CONFIG_SerialRX_val[1]==0xAA)
 				{
@@ -102,6 +148,7 @@ uint16_t CONFIG_callback()
 					#endif
 				}
 				break;
+#endif
 		}
 	}
 
@@ -152,7 +199,7 @@ uint16_t CONFIG_callback()
 				break;
 			#endif
 #ifdef CYRF6936_INSTALLED
-			case 4:
+			case 3:
 				//Cyrf ID
 				#ifndef FORCE_CYRF_ID
 					memcpy(&packet_in[1],"Cyrf ID",7);
@@ -165,17 +212,32 @@ uint16_t CONFIG_callback()
 				#endif
 				break;
 			#ifndef FORCE_CYRF_ID
-			case 5:
+			case 4:
 				//Reset Cyrf ID
 				packet_in[1] = 0x90+9;
 				memcpy(&packet_in[2],"Reset CID",9);
 				break;
 			#endif
 #endif
+#if defined(MULTI_RXID)
+			case 6:
+				//RX Number
+				memcpy(&packet_in[1],"AFHDS2 RX",9);
+				packet_in[10] = 0xD0+1;
+				packet_in[11] = rx_number;
+				break;
+			case 7:
+				//RX ID
+				memcpy(&packet_in[1],"RX ID",5);
+				packet_in[6] = 0xD0 + 4;
+				CONFIG_get_RXID(&packet_in[7], 4, rx_number);
+				break;
+#else
 			case 7:
 				packet_in[1] = 0x90+13;
 				memcpy(&packet_in[2],"Format EEPROM",13);
 				break;
+#endif
 		}
 		line++;
 		line %= 8;
@@ -187,6 +249,9 @@ uint16_t CONFIG_callback()
 
 void CONFIG_init()
 {
+#if defined(MULTI_RXID)
+	rx_number = RX_num;
+#endif
 }
 
 #endif

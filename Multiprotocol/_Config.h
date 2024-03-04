@@ -175,6 +175,9 @@
 
 //Protocol for module configuration
 #define MULTI_CONFIG_INO
+//Replaces the erase eeprom option in the protocol with AFHDS2A RX ID settings, allows
+// reading and setting the ID on internal modules that are difficult to clone.
+//#define MULTI_RXID
 
 //The protocols below need an A7105 to be installed
 #define	AFHDS2A_A7105_INO
