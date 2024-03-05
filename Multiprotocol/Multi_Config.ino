@@ -147,9 +147,16 @@ uint16_t CONFIG_callback()
 				break;
 #endif
 #if defined(MULTI_RXID)
-			case 6:
+			case 5:
 				active.protocol = CONFIG_SerialRX_val[1];
-				active.number = CONFIG_SerialRX_val[2];
+				if (active.number > 0xFF)
+					active.number = 0xFF;
+				debug("Update RX Number to ");
+				debug("%02X ",active.number);
+				debugln("");
+				break;
+			case 6:
+				active.number = CONFIG_SerialRX_val[1];
 				if (active.number > 0x40)
 					active.number = 0x40;
 				debug("Update RX Number to ");
@@ -166,7 +173,7 @@ uint16_t CONFIG_callback()
 				for(uint8_t i=0; i<active_data.len; i++)
 					debug("%02X ",data[i]);
 				debugln("");
-				CONFIG_write_RXID(&data[1], active_data.addr, active_data.len);
+				CONFIG_write_RXID(data, active_data.addr, active_data.len);
 				break;
 #else
 			case 7:
@@ -253,12 +260,17 @@ uint16_t CONFIG_callback()
 			#endif
 #endif
 #if defined(MULTI_RXID)
+			case 5:
+				//Protocol Number
+				memcpy(&packet_in[1],"ID",2);
+				packet_in[3] = 0xB0+1;
+				packet_in[4] = active.protocol;
+				break;
 			case 6:
 				//RX Number
 				memcpy(&packet_in[1],"RX",2);
-				packet_in[3] = 0xD0+2;
-				packet_in[4] = active.protocol;
-				packet_in[5] = active.number;
+				packet_in[3] = 0xB0+1;
+				packet_in[4] = active.number;
 				break;
 			case 7:
 				//RX ID
