@@ -30,7 +30,7 @@
 -- !! Before exiting the script must write 0 at address 0 for normal operation !!
 --###############################################################################
 
-local Version = "v0.2"
+local Version = "v0.3"
 local Focus = -1
 local Page = 0
 local Edit = -1
@@ -95,7 +95,7 @@ local function Config_Draw_Edit( event )
   local i
   local text
 
-  if Menu[Focus].field_type == 0xD0 then
+  if Menu[Focus].field_type == 0xD0 or Menu[Focus].field_type == 0xB0 then
   -- Editable Hex value
     if Edit == -1 then
     -- Init
@@ -163,10 +163,18 @@ local function Config_Draw_Edit( event )
       else
         attrib = 0
       end
-      if LCD_W == 480 then
-        lcd.drawText(170+12*2*(i-1), 110, string.format('%02X', Menu_value[i]), attrib)
+      if Menu[Focus].field_type == 0xD0 then
+        if LCD_W == 480 then
+          lcd.drawText(170+12*2*(i-1), 110, string.format('%02X', Menu_value[i]), attrib)
+        else
+          lcd.drawText(17+6*2*(i-1), 10, string.format('%02X', Menu_value[i]), attrib + SMLSIZE)
+        end
       else
-        lcd.drawText(17+6*2*(i-1), 10, string.format('%02X', Menu_value[i]), attrib + SMLSIZE)
+        if LCD_W == 480 then
+          lcd.drawText(170+12*2*(i-1), 110, string.format('%02d', Menu_value[i]), attrib)
+        else
+          lcd.drawText(17+6*2*(i-1), 10, string.format('%02d', Menu_value[i]), attrib + SMLSIZE)
+        end
       end
     end
     if Edit_pos == Menu[Focus].field_len + 1 then
@@ -380,14 +388,14 @@ local function Config_Draw_Menu()
         end
       elseif Menu[line].field_type == 0xA0 or Menu[line].field_type == 0xB0 then
       -- Decimal value
-        value = 0
+        text=""
         for i = 1, Menu[line].field_len, 1 do
-          value = value*256 + value
+          text = text .. string.format('%02d ', Menu[line].field_value[i])
         end
         if LCD_W == 480 then
-          lcd.drawText(10+9*#Menu[line].text, 32+20*line, value, attrib)
+          lcd.drawText(10+9*#Menu[line].text, 32+20*line, text, attrib)
         else
-          lcd.drawText(2+5*#Menu[line].text, 1+8*line, value, SMLSIZE + attrib)
+          lcd.drawText(2+5*#Menu[line].text, 1+8*line, text, SMLSIZE + attrib)
         end
       elseif Menu[line].field_type == 0xC0 or Menu[line].field_type == 0xD0 then
       -- Hex value
