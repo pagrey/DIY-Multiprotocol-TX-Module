@@ -63,29 +63,23 @@ void MULTI_get_RX_data(struct rx_id_data *rdata)
 			rdata->len=2;
 			rdata->addr=BUGSMINI_EEPROM_OFFSET+active.number*2;
 			break;
-		case PROTO_MOULDKG:
-			rdata->len=3;
-			rdata->addr=MOULDKG_EEPROM_OFFSET+active.number*3;
-			break;
 		case PROTO_TRAXXAS:
 			rdata->len=3;
 			rdata->addr=TRAXXAS_EEPROM_OFFSET+active.number*3;
+			break;
+		case PROTO_HOTT:
+			rdata->len=5;
+			rdata->addr=HOTT_EEPROM_OFFSET+active.number*5;
+			break;
+		case PROTO_MOULDKG:
+			rdata->len=3;
+			rdata->addr=MOULDKG_EEPROM_OFFSET+active.number*3;
 			break;
 		default:
 			rdata->len=4;
 			rdata->addr = EEPROM_ID_OFFSET;
 			break;
 	}
-}
-void CONFIG_get_RXID(uint8_t *data, uint16_t addr, uint8_t nb)
-{
-	for(uint8_t i=0; i<nb; i++)
-		data[i]=eeprom_read_byte((EE_ADDR)addr+i);
-}
-void CONFIG_write_RXID(uint8_t *data, uint16_t addr, uint8_t nb)
-{
-	for(uint8_t i=0; i<nb; i++)
-		eeprom_write_byte((EE_ADDR)addr+i,data[i]);
 }
 #endif
 uint16_t CONFIG_callback()
@@ -151,7 +145,7 @@ uint16_t CONFIG_callback()
 				active.protocol = CONFIG_SerialRX_val[1];
 				if (active.number > 0xFF)
 					active.number = 0xFF;
-				debug("Update RX Number to ");
+				debug("Update protocol to ");
 				debug("%02X ",active.number);
 				debugln("");
 				break;
@@ -159,7 +153,7 @@ uint16_t CONFIG_callback()
 				active.number = CONFIG_SerialRX_val[1];
 				if (active.number > 0x40)
 					active.number = 0x40;
-				debug("Update RX Number to ");
+				debug("Update RX number to ");
 				debug("%02X ",active.number);
 				debugln("");
 				break;
@@ -173,7 +167,8 @@ uint16_t CONFIG_callback()
 				for(uint8_t i=0; i<active_data.len; i++)
 					debug("%02X ",data[i]);
 				debugln("");
-				CONFIG_write_RXID(data, active_data.addr, active_data.len);
+				for(uint8_t i=0; i<active_data.len; i++)
+					eeprom_write_byte((EE_ADDR)active_data.addr+i,data[i]);
 				break;
 #else
 			case 7:
@@ -262,9 +257,9 @@ uint16_t CONFIG_callback()
 #if defined(MULTI_RXID)
 			case 5:
 				//Protocol Number
-				memcpy(&packet_in[1],"ID",2);
-				packet_in[3] = 0xB0+1;
-				packet_in[4] = active.protocol;
+				memcpy(&packet_in[1],"Protocol",8);
+				packet_in[9] = 0xB0+1;
+				packet_in[10] = active.protocol;
 				break;
 			case 6:
 				//RX Number
@@ -278,7 +273,8 @@ uint16_t CONFIG_callback()
 				MULTI_get_RX_data(&active_data);
 				memcpy(&packet_in[1],"ID",2);
 				packet_in[3] = 0xD0 + active_data.len;
-				CONFIG_get_RXID(&packet_in[4], active_data.addr, active_data.len);
+				for(uint8_t i=0; i<active_data.len; i++)
+					packet_in[4+i]=eeprom_read_byte((EE_ADDR)active_data.addr+i);
 				break;
 #else
 			case 7:
