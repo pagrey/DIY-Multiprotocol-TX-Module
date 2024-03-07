@@ -143,9 +143,9 @@
 #define NRF24L01_ENABLE_LOW_POWER
 
 
-/*****************/
-/*** GLOBAL ID ***/
-/*****************/
+/***************************/
+/*** GLOBAL, CYRF, RX ID ***/
+/***************************/
 //A global ID is used by most protocols to bind and retain the bind to models. To prevent duplicate IDs, it is automatically
 // generated using a random 32 bits number the first time the eeprom is initialized.
 //If you have 2 Multi modules which you want to share the same ID so you can use either to control the same RC model
@@ -159,6 +159,13 @@
 // then you can force the ID to a certain known value using the lines below.
 //Default is commented, you should uncoment only for test purpose or if you know exactly what you are doing!!!
 //#define FORCE_CYRF_ID	"\x12\x34\x56\x78\x9A\xBC"
+
+//Several protocols use an RX ID stored in eeprom memory. If the MULTI_CONFIG protocol is enabled this option replaces the
+// erase eeprom option in the protocol with RX ID settings. Currently supported protocols are: PROTO_AFHDS2A = 28,
+// PROTO_BUGS = 41, PROTO_BUGSMINI, PROTO_TRAXXAS, PROTO_HOTT = 57, PROTO_MOULDKG = 90. AFHDS2A is the default if
+// a valid protocol isn't selected.
+//Default is commented, you should uncoment only for test purpose or if you know exactly what you are doing!!!
+//#define MULTI_RXID
 
 
 /****************************/
