@@ -19,23 +19,64 @@
 #include "iface_cyrf6936.h"
 #endif
 
-void CONFIG_write_GID(uint32_t id)
+void MULTI_write_ID(uint8_t *data, uint16_t addr, uint8_t n)
 {
-	for(uint8_t i=0;i<4;i++)
-		eeprom_write_byte((EE_ADDR)EEPROM_ID_OFFSET+i,id >> (i*8));
-	//eeprom_write_byte((EE_ADDR)(EEPROM_ID_OFFSET+10),0xf0);
+	for(uint8_t i=0; i<n; i++)
+		eeprom_write_byte((EE_ADDR)addr+i,data[i]);
 }
+void MULTI_read_ID(uint8_t *packet, uint16_t addr, uint8_t start, uint8_t n)
+{
+	for(uint8_t i=0; i<n; i++)
+		packet[start+i]=eeprom_read_byte((EE_ADDR)addr+i);
 
-void CONFIG_write_CID(uint8_t *data)
-{
-	for(uint8_t i=0;i<6;i++)
-		eeprom_write_byte((EE_ADDR)EEPROM_CID_OFFSET+i, data[i]);
-	//eeprom_write_byte((EE_ADDR)EEPROM_CID_INIT_OFFSET, 0xf0);
 }
+#if defined(MULTI_RXID)
+struct {
+	uint8_t protocol;
+	uint8_t number;
+} active;
+typedef struct rx_id_data {
+	uint16_t addr;
+	uint8_t len;
+};
+
+void MULTI_get_RX_data(struct rx_id_data *rdata)
+{
+	switch(active.protocol)
+	{
+		case PROTO_BUGS:
+			rdata->len=2;
+			rdata->addr=BUGS_EEPROM_OFFSET+active.number*2;
+			break;
+		case PROTO_BUGSMINI:
+			rdata->len=2;
+			rdata->addr=BUGSMINI_EEPROM_OFFSET+active.number*2;
+			break;
+		case PROTO_TRAXXAS:
+			rdata->len=3;
+			rdata->addr=TRAXXAS_EEPROM_OFFSET+active.number*3;
+			break;
+		case PROTO_HOTT:
+			rdata->len=5;
+			rdata->addr=HOTT_EEPROM_OFFSET+active.number*5;
+			break;
+		case PROTO_MOULDKG:
+			rdata->len=3;
+			rdata->addr=MOULDKG_EEPROM_OFFSET+active.number*3;
+			break;
+		default:
+			rdata->len=4;
+			if(active.number<16)
+				rdata->addr=AFHDS2A_EEPROM_OFFSET+active.number*4;
+			else
+				rdata->addr=AFHDS2A_EEPROM_OFFSET2+(active.number-16)*4;
+			break;
+	}
+}
+#endif
 uint16_t CONFIG_callback()
 {
 	static uint8_t line=0, page=0;
-	uint32_t id=0;
 	// [0] = page<<4|line number
 	// [1..6] = max 6 bytes
 	if(CONFIG_SerialRX)
@@ -51,45 +92,73 @@ uint16_t CONFIG_callback()
 				// Page change
 			//	break;
 			case 1:
+				debug("Update GID to ");
 				for(uint8_t i=0; i<4; i++)
-				{
-					id <<= 8;
-					id |= CONFIG_SerialRX_val[i+1];
-				}
-				debugln("Update ID to %lx", id);
-				CONFIG_write_GID(id);
+					debug("%02X ",CONFIG_SerialRX_val[1+i]);
+				debugln("");
+				MULTI_write_ID(&CONFIG_SerialRX_val[1], EEPROM_ID_OFFSET, 4);
 				break;
 			case 2:
 				if(CONFIG_SerialRX_val[1]==0xAA)
 				{
+					uint8_t stm_data[4];
 					#define STM32_UUID ((uint32_t *)0x1FFFF7E8)
-					id = STM32_UUID[0] ^ STM32_UUID[1] ^ STM32_UUID[2];
+					uint32_t id = STM32_UUID[0] ^ STM32_UUID[1] ^ STM32_UUID[2];
+					memcpy(stm_data,&id,4);
 					debugln("Reset GID to %lx", id);
-					CONFIG_write_GID(id);
+					MULTI_write_ID(stm_data, EEPROM_ID_OFFSET, 4);
 				}
 				break;
 #ifdef CYRF6936_INSTALLED
-			case 4:
+			case 3:
 				debug("Update CID to ");
 				for(uint8_t i=0; i<6; i++)
-					debug("%02X ",CONFIG_SerialRX_val[i+1]);
+					debug("%02X ",CONFIG_SerialRX_val[1+i]);
 				debugln("");
-				CONFIG_write_CID(&CONFIG_SerialRX_val[1]);
-			case 5:
+				MULTI_write_ID(&CONFIG_SerialRX_val[1], EEPROM_CID_OFFSET, 6);
+				break;
+			case 4:
 				if(CONFIG_SerialRX_val[1]==0xAA)
 				{
-					uint8_t data[6];
+					uint8_t cyrf_data[6];
 					CYRF_WriteRegister(CYRF_25_MFG_ID, 0xFF);	/* Fuses power on */
-					CYRF_ReadRegisterMulti(CYRF_25_MFG_ID, data, 6);
+					CYRF_ReadRegisterMulti(CYRF_25_MFG_ID, cyrf_data, 6);
 					CYRF_WriteRegister(CYRF_25_MFG_ID, 0x00);	/* Fuses power off */
 					debug("Reset CID to ");
 					for(uint8_t i=0; i<6; i++)
-						debug("%02X ",data[i]);
-					debugln("");
-					CONFIG_write_CID(data);
+						debug("%02X ",cyrf_data[i]);
+					debugln("");	
+					MULTI_write_ID(cyrf_data, EEPROM_CID_OFFSET, 6);
 				}
 				break;
 #endif
+#if defined(MULTI_RXID)
+			case 5:
+				active.protocol = CONFIG_SerialRX_val[1];
+				if (active.number > 0xFF)
+					active.number = 0xFF;
+				debug("Update protocol to ");
+				debug("%02X ",active.number);
+				debugln("");
+				break;
+			case 6:
+				active.number = CONFIG_SerialRX_val[1];
+				if (active.number > 0x40)
+					active.number = 0x40;
+				debug("Update RX number to ");
+				debug("%02X ",active.number);
+				debugln("");
+				break;
+			case 7:
+			 	struct rx_id_data active_data;
+				MULTI_get_RX_data(&active_data);
+				debug("Update RXID to ");
+				for(uint8_t i=0; i<active_data.len; i++)
+					debug("%02X ",CONFIG_SerialRX[1+i]);
+				debugln("");
+				MULTI_write_ID(&CONFIG_SerialRX_val[1], active_data.addr, active_data.len);
+				break;
+#else
 			case 7:
 				if(CONFIG_SerialRX_val[1]==0xAA)
 				{
@@ -98,10 +167,11 @@ uint16_t CONFIG_callback()
 						EEPROM.format();
 					#else
 						for (uint16_t i = 0; i < 512; i++)
-    						eeprom_write_byte((EE_ADDR)i, 0xFF);
+    							eeprom_write_byte((EE_ADDR)i, 0xFF);
 					#endif
 				}
 				break;
+#endif
 		}
 	}
 
@@ -132,17 +202,16 @@ uint16_t CONFIG_callback()
 				break;
 			case 1:
 				//Global ID
+				memcpy(&packet_in[1],"GID",3);
 				#ifndef FORCE_GLOBAL_ID
-					memcpy(&packet_in[1],"Global ID",9);
-					packet_in[10] = 0xD0 + 4;
+					packet_in[4] = 0xD0 + 4;
 				#else
-					memcpy(&packet_in[1],"Fixed ID ",9);
-					packet_in[10] = 0xC0 + 4;
+					packet_in[4] = 0xC0 + 4;
 				#endif
 				MProtocol_id_master = random_id(EEPROM_ID_OFFSET,false);
 				set_rx_tx_addr(MProtocol_id_master);
 				for(uint8_t i=0; i<4; i++)
-					packet_in[11+i]=rx_tx_addr[i];
+					packet_in[8-i]=rx_tx_addr[i];
 				break;
 			#if defined(STM32_BOARD) && not defined(FORCE_GLOBAL_ID)
 			case 2:
@@ -152,30 +221,51 @@ uint16_t CONFIG_callback()
 				break;
 			#endif
 #ifdef CYRF6936_INSTALLED
-			case 4:
+			case 3:
 				//Cyrf ID
+				memcpy(&packet_in[1],"CID",3);
 				#ifndef FORCE_CYRF_ID
-					memcpy(&packet_in[1],"Cyrf ID",7);
-					packet_in[8] = 0xD0 + 6;
-					CYRF_GetMfgData(&packet_in[9]);
+					packet_in[4] = 0xD0 + 6;
 				#else
-					memcpy(&packet_in[1],"Fixed CID",9);
-					packet_in[10] = 0xC0 + 6;
-					CYRF_GetMfgData(&packet_in[11]);
+					packet_in[4] = 0xC0 + 6;
 				#endif
+				CYRF_GetMfgData(&packet_in[5]);
 				break;
 			#ifndef FORCE_CYRF_ID
-			case 5:
+			case 4:
 				//Reset Cyrf ID
 				packet_in[1] = 0x90+9;
 				memcpy(&packet_in[2],"Reset CID",9);
 				break;
 			#endif
 #endif
+#if defined(MULTI_RXID)
+			case 5:
+				//Protocol Number
+				memcpy(&packet_in[1],"Protocol",8);
+				packet_in[9] = 0xB0+1;
+				packet_in[10] = active.protocol;
+				break;
+			case 6:
+				//RX Number
+				memcpy(&packet_in[1],"RX",2);
+				packet_in[3] = 0xB0+1;
+				packet_in[4] = active.number;
+				break;
+			case 7:
+				//RX ID
+			 	struct rx_id_data active_data;
+				MULTI_get_RX_data(&active_data);
+				memcpy(&packet_in[1],"ID",2);
+				packet_in[3] = 0xD0 + active_data.len;
+				MULTI_read_ID(packet_in, active_data.addr, 4, active_data.len);
+				break;
+#else
 			case 7:
 				packet_in[1] = 0x90+13;
 				memcpy(&packet_in[2],"Format EEPROM",13);
 				break;
+#endif
 		}
 		line++;
 		line %= 8;
@@ -187,6 +277,10 @@ uint16_t CONFIG_callback()
 
 void CONFIG_init()
 {
+#if defined(MULTI_RXID)
+	active.number = RX_num;
+	active.protocol = PROTO_AFHDS2A;
+#endif
 }
 
 #endif
