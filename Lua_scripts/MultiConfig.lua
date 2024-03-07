@@ -30,7 +30,7 @@
 -- !! Before exiting the script must write 0 at address 0 for normal operation !!
 --###############################################################################
 
-local Version = "v0.2"
+local Version = "v0.3"
 local Focus = -1
 local Page = 0
 local Edit = -1
@@ -49,7 +49,17 @@ local ModuleType = ""
 local Module = {}
 local InitialProtocol = 0
 local InitialSubProtocol = 0
-
+local ProtocolBlocks = 8
+local ReceiverNumbers = 64
+local ValueRange = { {255, 255, 255, 255, 255, 255, 255},
+                     {255, 255, 255, 255, 255, 255, 255},
+                     {255, 255, 255, 255, 255, 255, 255},
+                     {255, 255, 255, 255, 255, 255, 255},
+                     {  ProtocolBlocks - 1,  ReceiverNumbers, 255, 255, 255, 255, 255},
+                     {255, 255, 255, 255, 255, 255, 255},
+                     {255, 255, 255, 255, 255, 255, 255},
+                     {255, 255, 255, 255, 255, 255, 255} }
+local HelpText = {"", "", "", "", "[Protocol][RX Number]", "", "" }
 function bitand(a, b)
     local result = 0
     local bitval = 1
@@ -78,13 +88,20 @@ local function Config_Release()
   --Set the protocol back to what it was
   Module.protocol = InitialProtocol
   Module.subProtocol = InitialSubProtocol
-  model.setModule(ModuleNumber, Module)
 
   --Stop requesting updates
   local i
   for i = 3 , 0 , -1 do
     multiBuffer( i, 0 )
   end
+
+  --pause while waiting for the module to switch to config
+  for i = 0, 10, 1 do end
+
+  model.setModule(ModuleNumber, Module)
+
+  --pause while waiting for the module to switch to config
+  for i = 0, 10, 1 do end
 end
 
 local function Config_Page( )
@@ -95,8 +112,8 @@ local function Config_Draw_Edit( event )
   local i
   local text
 
-  if Menu[Focus].field_type == 0xD0 then
-  -- Editable Hex value
+  if Menu[Focus].field_type == 0xD0 or Menu[Focus].field_type == 0xB0 then
+  -- Editable Hex or Decimal value
     if Edit == -1 then
     -- Init
       Edit = 0
@@ -140,7 +157,7 @@ local function Config_Draw_Edit( event )
         end
       elseif event == EVT_VIRTUAL_NEXT then
       -- Change value
-        if Menu_value[Edit_pos] < 255 then
+        if Menu_value[Edit_pos] < ValueRange[Focus][Edit_pos] then
           Menu_value[Edit_pos] = Menu_value[Edit_pos] + 1
         end
       end
@@ -163,10 +180,20 @@ local function Config_Draw_Edit( event )
       else
         attrib = 0
       end
-      if LCD_W == 480 then
-        lcd.drawText(170+12*2*(i-1), 110, string.format('%02X', Menu_value[i]), attrib)
+      -- Hex value
+      if Menu[Focus].field_type == 0xD0 then
+        if LCD_W == 480 then
+          lcd.drawText(170+12*2*(i-1), 110, string.format('%02X', Menu_value[i]), attrib)
+        else
+          lcd.drawText(17+6*2*(i-1), 10, string.format('%02X', Menu_value[i]), attrib + SMLSIZE)
+        end
+     -- Decimal value
       else
-        lcd.drawText(17+6*2*(i-1), 10, string.format('%02X', Menu_value[i]), attrib + SMLSIZE)
+        if LCD_W == 480 then
+          lcd.drawText(170+12*2*(i-1), 110, string.format('%02d', Menu_value[i]), attrib)
+        else
+          lcd.drawText(17+6*2*(i-1), 10, string.format('%02d', Menu_value[i]), attrib + SMLSIZE)
+        end
       end
     end
     if Edit_pos == Menu[Focus].field_len + 1 then
@@ -186,8 +213,10 @@ local function Config_Draw_Edit( event )
     end
     if LCD_W == 480 then
       lcd.drawText(260, 130, "Cancel", attrib)
+      lcd.drawText(165, 150, HelpText[Focus], 0 + SMLSIZE)
     else
       lcd.drawText(77, 30, "Cancel", attrib + SMLSIZE)
+      lcd.drawText(2, 50, HelpText[Focus], 0 + SMLSIZE)
     end
 
   elseif Menu[Focus].field_type == 0x90 then
@@ -241,8 +270,10 @@ local function Config_Draw_Edit( event )
     end
     if LCD_W == 480 then
       lcd.drawText(260, 130, "No", attrib)
+      lcd.drawText(165, 150, HelpText[Focus], 0 + SMLSIZE)
     else
       lcd.drawText(77, 30, "No", attrib)
+      lcd.drawText(2, 50, HelpText[Focus], 0 + SMLSIZE)
     end
   end
 end
@@ -380,14 +411,14 @@ local function Config_Draw_Menu()
         end
       elseif Menu[line].field_type == 0xA0 or Menu[line].field_type == 0xB0 then
       -- Decimal value
-        value = 0
+        text=""
         for i = 1, Menu[line].field_len, 1 do
-          value = value*256 + value
+          text = text .. string.format('%02d ', Menu[line].field_value[i])
         end
         if LCD_W == 480 then
-          lcd.drawText(10+9*#Menu[line].text, 32+20*line, value, attrib)
+          lcd.drawText(10+9*#Menu[line].text, 32+20*line, text, attrib)
         else
-          lcd.drawText(2+5*#Menu[line].text, 1+8*line, value, SMLSIZE + attrib)
+          lcd.drawText(2+5*#Menu[line].text, 1+8*line, text, SMLSIZE + attrib)
         end
       elseif Menu[line].field_type == 0xC0 or Menu[line].field_type == 0xD0 then
       -- Hex value
@@ -496,8 +527,16 @@ local function Config_Run(event)
     error("Cannot be run as a model script!")
     return 2
   elseif event == EVT_VIRTUAL_EXIT then
-    Config_Release()
-    return 2
+    if Edit >= 0 then
+      Focus = -1
+      Page = 0
+      Edit = -1
+      Edit_pos = 1
+      return 0
+    else
+      Config_Release()
+      return 2
+    end
   else
     Config_Draw_Menu()
     if ( event == EVT_VIRTUAL_PREV_PAGE or event == EVT_VIRTUAL_NEXT_PAGE ) and Edit < 1 then
