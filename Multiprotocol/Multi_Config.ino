@@ -228,9 +228,9 @@ uint16_t CONFIG_callback()
 				//memcpy(&packet_in[1],"Protocol",8);
 				for (uint8_t i = 0; multi_protocols[i].protocol != 0xFF; i++) {
 					if (Protocol_Offset[active.rxid_block][3] == multi_protocols[i].protocol) {
-						memcpy(&packet_in[1],multi_protocols[i].ProtoString,strlen(multi_protocols[i].ProtoString)-1);
-						packet_in[(strlen(multi_protocols[i].ProtoString))] = 0xB0+1;
-						packet_in[(strlen(multi_protocols[i].ProtoString)+1)] = active.rxid_block;
+						memcpy(&packet_in[1],multi_protocols[i].ProtoString,strlen(multi_protocols[i].ProtoString));
+						packet_in[strlen(multi_protocols[i].ProtoString)+1] = 0xB0+1;
+						packet_in[strlen(multi_protocols[i].ProtoString)+2] = active.rxid_block;
 						break;
 					}
 					else if (multi_protocols[i+1].protocol == 0xFF) {
