@@ -85,23 +85,16 @@ local function Config_Send(page, line, value)
 end
 
 local function Config_Release()
-  --Set the protocol back to what it was
-  Module.protocol = InitialProtocol
-  Module.subProtocol = InitialSubProtocol
-
   --Stop requesting updates
   local i
   for i = 3 , 0 , -1 do
     multiBuffer( i, 0 )
   end
 
-  --pause while waiting for the module to switch to config
-  for i = 0, 10, 1 do end
-
+  --Set the protocol back to what it was
+  Module.protocol = InitialProtocol
+  Module.subProtocol = InitialSubProtocol
   model.setModule(ModuleNumber, Module)
-
-  --pause while waiting for the module to switch to config
-  for i = 0, 10, 1 do end
 end
 
 local function Config_Page( )
